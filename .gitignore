@@ -1,0 +1,32 @@
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore migrations during early development
+myapi/migrations/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Django secrets
+.env
+*.secret
+
+# Static and media files
+static/
+media/
+
+# Databases
+db.sqlite3
+*.db
+
+# Editor and OS-specific
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
