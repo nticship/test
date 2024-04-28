@@ -1,7 +1,9 @@
+import random
 from django.shortcuts import render
 
 # Create your views here.
 
+import pandas as pd
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -55,6 +57,7 @@ class ImageUploadView(APIView):
 
 
 
+
 # ------------------------------------------------------------------------
 # ------------------------------------------------------------------------
 # ------------------------------------------------------------------------
@@ -91,27 +94,48 @@ class ImageClassification(APIView):
             return Response({'error': 'No image provided'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Get the uploaded image file
-        image_file = request.FILES['image']
+        image = request.FILES['image']
 
-        # Read the image data into a format suitable for processing
-        image_data = image_file.read()  # Read the image data
-        image = Image.open(io.BytesIO(image_data))  # Open it with PIL
+        filename = default_storage.save('myapi/images/' + image.name, ContentFile(image.read()))
 
-        # Convert to RGB (if needed)
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
 
-        # Resize the image
-        image = image.resize((150, 150))
 
-        # Convert the image to a NumPy array
-        image_array = np.array(image)
 
-        # Normalize the image (assuming model expects this)
-        image_normalized = image_array / 255.0
 
-        # Expand dimensions to fit the model input shape
-        image_expanded = np.expand_dims(image_normalized, axis=0)
+        # img_path = os.path.join('./dataset/snow/0830.jpg')
+        img_path = filename
+
+
+        
+
+        df_single_image = pd.DataFrame({
+            'filepaths': [img_path],
+            'labels': [''.join(random.choices('abcdefghijklmnopqrstuvwxyz', k=random.randint(5, 9))) for _ in range(1)]
+        })
+
+        # Data generator with minimal preprocessing for a single image
+        test_datagen = tf.keras.preprocessing.image.ImageDataGenerator(
+            horizontal_flip=True,
+            zoom_range=0.2,
+            rotation_range=20,
+            shear_range=0.2
+        )
+
+        # Create a data generator for the single image
+        image_pret = test_datagen.flow_from_dataframe(
+            df_single_image,
+            x_col='filepaths',
+            y_col=None,  # No class information, because it's unknown
+            target_size=(224, 224),
+            batch_size=1,
+            class_mode=None  # No specific class mode
+        )
+
+        
+
+
+
+
 
         # Prediction logic
         model = {
@@ -124,21 +148,84 @@ class ImageClassification(APIView):
         model['resnet50'].load_weights('myapi/ai_models/resnet50_weights.h5', by_name=True)
         model['xception'].load_weights('myapi/ai_models/xception_weights.h5', by_name=True)
 
+        model['vgg16'].compile(
+            optimizer='adam', 
+            loss='categorical_crossentropy', 
+            metrics=['accuracy']
+        )
+        model['resnet50'].compile(
+            optimizer='adam', 
+            loss='categorical_crossentropy', 
+            metrics=['accuracy']
+        )
+        model['xception'].compile(
+            optimizer='adam', 
+            loss='categorical_crossentropy', 
+            metrics=['accuracy']
+        )
+
+
+
+
+
+
+
+
         # Get predictions
         prediction = {
-            'vgg16': model['vgg16'].predict(image_expanded)[0],
-            'resnet50': model['resnet50'].predict(image_expanded)[0],
-            'xception': model['xception'].predict(image_expanded)[0],
+            'vgg16': model['vgg16'].predict(image_pret)[0],
+            'resnet50': model['resnet50'].predict(image_pret)[0],
+            'xception': model['xception'].predict(image_pret)[0],
         }
+
+        predicted_class_index = {
+            'vgg16': np.argmax(prediction['vgg16']),
+            'resnet50': np.argmax(prediction['resnet50']),
+            'xception': np.argmax(prediction['xception']),
+        }
+
+        classes = {
+            0: 'dew',
+            1: 'fogsmog',
+            2: 'frost',
+            3: 'glaze',
+            4: 'hail',
+            5: 'lightning',
+            6: 'rain',
+            7: 'rainbow',
+            8: 'rime',
+            9: 'sandstorm',
+            10: 'snow'
+        }
+
+        predicted_class = {
+            'vgg16': classes[predicted_class_index['vgg16']],
+            'resnet50': classes[predicted_class_index['resnet50']],
+            'xception': classes[predicted_class_index['xception']],
+        }
+
+
+
+
+
+
+
+
 
         return Response({
             'message': 'Image uploaded successfully',
-            'filename': image_file.name,
-            'size': image_file.size,
-            'content_type': image_file.content_type,
-            'prediction de vgg16': str(prediction['vgg16']),
-            'prediction de resnet50': str(prediction['resnet50']),
-            'prediction de xception': str(prediction['xception']),
+
+            'filename': image.name,
+            'size': image.size,
+            'content_type': image.content_type,
+
+            'vgg16': predicted_class['vgg16'],
+            'resnet50': predicted_class['resnet50'],
+            'xception': predicted_class['xception'],
+
+            'predictions_de_vgg16': str(prediction['vgg16']),
+            'predictions_de_resnet50': str(prediction['resnet50']),
+            'predictions_de_xception': str(prediction['xception']),
         })
 
 # ------------------------------------------------------------------------
